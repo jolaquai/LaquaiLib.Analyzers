@@ -31,7 +31,13 @@ public sealed class RemoveBracesAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        if (block.Parent is IfStatementSyntax { Else: not null } && EndsWithUnmatchedIf(block.Statements[0]))
+        var statement = block.Statements[0];
+        if (statement is LocalDeclarationStatementSyntax or LocalFunctionStatementSyntax or LabeledStatementSyntax or BlockSyntax)
+        {
+            return;
+        }
+
+        if (block.Parent is IfStatementSyntax { Else: not null } && EndsWithUnmatchedIf(statement))
         {
             return;
         }

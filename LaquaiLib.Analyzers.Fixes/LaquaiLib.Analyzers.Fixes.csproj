@@ -8,15 +8,14 @@
 
     <ItemGroup>
         <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="5.0.0" PrivateAssets="all" />
+        <ProjectReference Include="..\LaquaiLib.Analyzers.Shared\LaquaiLib.Analyzers.Shared.csproj" />
 
         <Using Include="System.Composition" />
         <Using Include="Microsoft.CodeAnalysis.CodeActions" />
         <Using Include="Microsoft.CodeAnalysis.CodeFixes" />
         <Using Include="Microsoft.CodeAnalysis.Simplification" />
         <Using Include="Microsoft.CodeAnalysis.Formatting" />
-    </ItemGroup>
 
-    <ItemGroup>
         <Folder Include="Refactorings\" />
     </ItemGroup>
 

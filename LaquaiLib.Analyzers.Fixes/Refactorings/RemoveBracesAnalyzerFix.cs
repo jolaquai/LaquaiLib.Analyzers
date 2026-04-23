@@ -1,47 +1,51 @@
 namespace LaquaiLib.Analyzers.Fixes.Refactorings;
 
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(RemoveBracesAnalyzerFix)), Shared]
-public sealed class RemoveBracesAnalyzerFix : CodeFixProvider
+public sealed class RemoveBracesAnalyzerFix : LaquaiLibNodeFixer
 {
-    public override ImmutableArray<string> FixableDiagnosticIds { get; } = ["LAQ4002"];
-    public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+    public RemoveBracesAnalyzerFix() : base("LAQ4002") { }
 
-    public override Task RegisterCodeFixesAsync(CodeFixContext context)
+    public override FixInfo GetFixInfo(CompilationUnitSyntax compilationUnitSyntax, SyntaxNode syntaxNode, Diagnostic diagnostic)
     {
-        foreach (var diagnostic in context.Diagnostics)
+        var block = syntaxNode as BlockSyntax ?? syntaxNode.FirstAncestorOrSelf<BlockSyntax>();
+        if (block is null || block.Statements.Count != 1 || !IsEligibleParent(block.Parent))
         {
-            var span = diagnostic.Location.SourceSpan;
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: "Remove braces",
-                    createChangedDocument: cancellationToken => RemoveBracesAsync(context.Document, span, cancellationToken),
-                    equivalenceKey: nameof(RemoveBracesAnalyzerFix)
-                ),
-                diagnostic
-            );
+            return FixInfo.Empty;
         }
 
-        return Task.CompletedTask;
+        var inner = block.Statements[0];
+        if (inner is LocalDeclarationStatementSyntax or LocalFunctionStatementSyntax or LabeledStatementSyntax or BlockSyntax)
+        {
+            return FixInfo.Empty;
+        }
+
+        var leadingTrivia = inner.GetLeadingTrivia();
+        if (HasSignificantTrivia(block.OpenBraceToken.LeadingTrivia))
+        {
+            leadingTrivia = block.OpenBraceToken.LeadingTrivia.AddRange(leadingTrivia);
+        }
+
+        var replacement = inner
+            .WithLeadingTrivia(leadingTrivia)
+            .WithTrailingTrivia(inner.GetTrailingTrivia().AddRange(block.CloseBraceToken.TrailingTrivia));
+
+        return new FixInfo("Remove braces", editor =>
+        {
+            editor.ReplaceNode(block, replacement);
+            return default;
+        });
     }
 
-    private static async Task<Document> RemoveBracesAsync(Document document, TextSpan span, CancellationToken cancellationToken)
-    {
-        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-        if (root is null)
-        {
-            return document;
-        }
+    private static bool IsEligibleParent(SyntaxNode parent) => parent is
+        IfStatementSyntax or
+        ElseClauseSyntax or
+        WhileStatementSyntax or
+        ForStatementSyntax or
+        ForEachStatementSyntax or
+        UsingStatementSyntax or
+        LockStatementSyntax or
+        FixedStatementSyntax;
 
-        var node = root.FindNode(span, getInnermostNodeForTie: true);
-        var block = node.FirstAncestorOrSelf<BlockSyntax>();
-        if (block is null || block.Statements.Count != 1)
-        {
-            return document;
-        }
-
-        var statement = block.Statements[0];
-        var newStatement = statement.WithTrailingTrivia(block.CloseBraceToken.TrailingTrivia);
-
-        return document.WithSyntaxRoot(root.ReplaceNode(block, newStatement));
-    }
+    private static bool HasSignificantTrivia(SyntaxTriviaList trivia)
+        => trivia.Any(static t => !t.IsKind(SyntaxKind.WhitespaceTrivia) && !t.IsKind(SyntaxKind.EndOfLineTrivia));
 }

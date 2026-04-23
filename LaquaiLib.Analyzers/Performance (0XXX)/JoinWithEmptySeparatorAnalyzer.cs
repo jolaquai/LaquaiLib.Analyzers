@@ -1,8 +1,16 @@
+using Microsoft.CodeAnalysis.Operations;
+
 namespace LaquaiLib.Analyzers.Performance__0XXX_;
 
+/// <summary>
+/// Reports calls to <see cref="string.Join(string, string[])"/> and related overloads when the separator is a compile-time empty string.
+/// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class JoinWithEmptySeparatorAnalyzer : DiagnosticAnalyzer
 {
+    /// <summary>
+    /// Describes diagnostic <c>LAQ0003</c>.
+    /// </summary>
     public static DiagnosticDescriptor Descriptor { get; } = new(
         id: "LAQ0003",
         title: "Do not use string.Join with an empty separator",
@@ -13,36 +21,22 @@ public sealed class JoinWithEmptySeparatorAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true
     );
 
+    /// <inheritdoc/>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = [Descriptor];
 
+    /// <inheritdoc/>
     public override void Initialize(AnalysisContext context)
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.InvocationExpression);
+        context.RegisterOperationAction(AnalyzeOperation, OperationKind.Invocation);
     }
 
-    private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
+    private static void AnalyzeOperation(OperationAnalysisContext context)
     {
-        var invocation = Unsafe.As<InvocationExpressionSyntax>(context.Node);
-
-        var nameText = invocation.Expression switch
-        {
-            MemberAccessExpressionSyntax memberAccess => memberAccess.Name.Identifier.ValueText,
-            IdentifierNameSyntax identifier => identifier.Identifier.ValueText,
-            _ => null,
-        };
-        if (nameText != "Join")
-        {
-            return;
-        }
-
-        var semanticModel = context.SemanticModel;
-        var cancellationToken = context.CancellationToken;
-
-        if (semanticModel.GetSymbolInfo(invocation, cancellationToken).Symbol is not IMethodSymbol method
-            || !method.IsStatic
-            || method.ContainingType?.SpecialType != SpecialType.System_String)
+        var invocation = Unsafe.As<IInvocationOperation>(context.Operation);
+        var method = invocation.TargetMethod;
+        if (method is not { IsStatic: true, Name: "Join", ContainingType.SpecialType: SpecialType.System_String })
         {
             return;
         }
@@ -52,18 +46,19 @@ public sealed class JoinWithEmptySeparatorAnalyzer : DiagnosticAnalyzer
             return;
         }
 
-        var arguments = invocation.ArgumentList.Arguments;
-        if (arguments.Count == 0)
+        var separatorParameter = method.Parameters[0];
+        var separatorArgument = invocation.Arguments.FirstOrDefault(a => SymbolEqualityComparer.Default.Equals(a.Parameter, separatorParameter));
+        if (separatorArgument is null)
         {
             return;
         }
 
-        var constant = semanticModel.GetConstantValue(arguments[0].Expression, cancellationToken);
+        var constant = separatorArgument.Value.ConstantValue;
         if (!constant.HasValue || constant.Value is not string separator || separator.Length != 0)
         {
             return;
         }
 
-        context.ReportDiagnostic(Diagnostic.Create(Descriptor, invocation.GetLocation()));
+        context.ReportDiagnostic(Diagnostic.Create(Descriptor, invocation.Syntax.GetLocation()));
     }
 }

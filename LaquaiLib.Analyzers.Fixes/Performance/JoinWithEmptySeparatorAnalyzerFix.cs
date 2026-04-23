@@ -1,46 +1,39 @@
 namespace LaquaiLib.Analyzers.Fixes.Performance;
 
+/// <summary>
+/// Provides the code fix for <c>LAQ0003</c>.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(JoinWithEmptySeparatorAnalyzerFix)), Shared]
-public sealed class JoinWithEmptySeparatorAnalyzerFix : CodeFixProvider
+public sealed class JoinWithEmptySeparatorAnalyzerFix : LaquaiLibNodeFixer
 {
-    public override ImmutableArray<string> FixableDiagnosticIds { get; } = ["LAQ0003"];
-    public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+    /// <summary>
+    /// Initializes a new instance of the <see cref="JoinWithEmptySeparatorAnalyzerFix"/> class.
+    /// </summary>
+    public JoinWithEmptySeparatorAnalyzerFix() : base("LAQ0003") { }
 
-    public override Task RegisterCodeFixesAsync(CodeFixContext context)
+    /// <inheritdoc/>
+    public override FixInfo GetFixInfo(CompilationUnitSyntax compilationUnitSyntax, SyntaxNode syntaxNode, Diagnostic diagnostic)
     {
-        foreach (var diagnostic in context.Diagnostics)
+        var invocation = syntaxNode as InvocationExpressionSyntax ?? syntaxNode.FirstAncestorOrSelf<InvocationExpressionSyntax>();
+        if (invocation is null)
         {
-            var span = diagnostic.Location.SourceSpan;
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: "Use string.Concat",
-                    createChangedDocument: cancellationToken => ModifyDocument(context.Document, span, cancellationToken),
-                    equivalenceKey: nameof(JoinWithEmptySeparatorAnalyzerFix)
-                ),
-                diagnostic
-            );
+            return FixInfo.Empty;
         }
 
-        return Task.CompletedTask;
-    }
-
-    private static async Task<Document> ModifyDocument(Document document, TextSpan span, CancellationToken cancellationToken)
-    {
-        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-        if (root is null)
+        var originalArguments = invocation.ArgumentList.Arguments;
+        if (originalArguments.Count < 2)
         {
-            return document;
+            return FixInfo.Empty;
         }
 
-        var node = root.FindNode(span, getInnermostNodeForTie: true);
-        while (node is not null and not InvocationExpressionSyntax)
-        {
-            node = node.Parent;
-        }
+        var separatorArgument = originalArguments.FirstOrDefault(static argument =>
+            argument.NameColon?.Name is IdentifierNameSyntax { Identifier.ValueText: "separator" });
+        separatorArgument ??= originalArguments[0];
 
-        if (node is not InvocationExpressionSyntax invocation)
+        var separatorIndex = originalArguments.IndexOf(separatorArgument);
+        if (separatorIndex < 0)
         {
-            return document;
+            return FixInfo.Empty;
         }
 
         ExpressionSyntax newExpression = invocation.Expression switch
@@ -50,18 +43,26 @@ public sealed class JoinWithEmptySeparatorAnalyzerFix : CodeFixProvider
             _ => invocation.Expression,
         };
 
-        var originalArguments = invocation.ArgumentList.Arguments;
-        var newArguments = originalArguments.RemoveAt(0);
-        if (newArguments.Count > 0)
+        var newArguments = originalArguments.RemoveAt(separatorIndex);
+        if (newArguments.Count > separatorIndex)
         {
-            var firstArgument = newArguments[0];
-            newArguments = newArguments.Replace(firstArgument, firstArgument.WithLeadingTrivia(originalArguments[0].GetLeadingTrivia()));
+            var successorArgument = newArguments[separatorIndex];
+            newArguments = newArguments.Replace(successorArgument, successorArgument.WithLeadingTrivia(separatorArgument.GetLeadingTrivia()));
+        }
+        else if (newArguments.Count > 0)
+        {
+            var predecessorArgument = newArguments[newArguments.Count - 1];
+            newArguments = newArguments.Replace(predecessorArgument, predecessorArgument.WithTrailingTrivia(predecessorArgument.GetTrailingTrivia().AddRange(separatorArgument.GetLeadingTrivia())));
         }
 
         var newInvocation = invocation
             .WithExpression(newExpression)
             .WithArgumentList(invocation.ArgumentList.WithArguments(newArguments));
 
-        return document.WithSyntaxRoot(root.ReplaceNode(invocation, newInvocation));
+        return new FixInfo("Use string.Concat", editor =>
+        {
+            editor.ReplaceNode(invocation, newInvocation);
+            return default;
+        });
     }
 }

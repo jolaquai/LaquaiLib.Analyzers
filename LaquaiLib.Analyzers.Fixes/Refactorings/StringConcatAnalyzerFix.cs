@@ -1,37 +1,25 @@
+using Microsoft.CodeAnalysis.Operations;
+
 namespace LaquaiLib.Analyzers.Fixes.Refactorings;
 
+/// <summary>
+/// Provides the code fix for <c>LAQ4001</c>.
+/// </summary>
 [ExportCodeFixProvider(LanguageNames.CSharp, Name = nameof(StringConcatAnalyzerFix)), Shared]
-public sealed class StringConcatAnalyzerFix : CodeFixProvider
+public sealed class StringConcatAnalyzerFix : LaquaiLibNodeFixer
 {
-    public override ImmutableArray<string> FixableDiagnosticIds { get; } = ["LAQ4001"];
-    public override FixAllProvider GetFixAllProvider() => WellKnownFixAllProviders.BatchFixer;
+    /// <summary>
+    /// Initializes a new instance of the <see cref="StringConcatAnalyzerFix"/> class.
+    /// </summary>
+    public StringConcatAnalyzerFix() : base("LAQ4001") { }
 
-    public override Task RegisterCodeFixesAsync(CodeFixContext context)
+    /// <inheritdoc/>
+    public override FixInfo GetFixInfo(CompilationUnitSyntax compilationUnitSyntax, SyntaxNode syntaxNode, Diagnostic diagnostic)
     {
-        foreach (var diagnostic in context.Diagnostics)
+        var node = syntaxNode as BinaryExpressionSyntax ?? syntaxNode.FirstAncestorOrSelf<BinaryExpressionSyntax>();
+        if (node is null || !node.IsKind(SyntaxKind.AddExpression))
         {
-            var span = diagnostic.Location.SourceSpan;
-            context.RegisterCodeFix(
-                CodeAction.Create(
-                    title: "Use interpolated string",
-                    createChangedDocument: cancellationToken => ModifyDocument(context.Document, span, cancellationToken),
-                    equivalenceKey: nameof(StringConcatAnalyzerFix)
-                ),
-                diagnostic
-            );
-        }
-
-        return Task.CompletedTask;
-    }
-
-    private static async Task<Document> ModifyDocument(Document document, TextSpan span, CancellationToken cancellationToken)
-    {
-        var root = await document.GetSyntaxRootAsync(cancellationToken).ConfigureAwait(false);
-        var semanticModel = await document.GetSemanticModelAsync(cancellationToken).ConfigureAwait(false);
-
-        if (root?.FindNode(span, getInnermostNodeForTie: true) is not BinaryExpressionSyntax node || semanticModel is null)
-        {
-            return document;
+            return FixInfo.Empty;
         }
 
         while (node.Parent is BinaryExpressionSyntax { RawKind: (int)SyntaxKind.AddExpression } parent)
@@ -39,41 +27,50 @@ public sealed class StringConcatAnalyzerFix : CodeFixProvider
             node = parent;
         }
 
-        var parts = new List<ExpressionSyntax>();
-        Flatten(node, parts, semanticModel, cancellationToken);
-
-        var verbatim = ShouldUseVerbatim(parts);
-        if (AllAreStringLiterals(parts))
+        return new FixInfo("Use interpolated string", async editor =>
         {
-            var merged = BuildStringLiteral(parts, verbatim).WithTriviaFrom(node);
-            return document.WithSyntaxRoot(root.ReplaceNode(node, merged));
-        }
+            var semanticModel = await editor.OriginalDocument.GetSemanticModelAsync(default).ConfigureAwait(false);
+            if (semanticModel?.GetOperation(node) is not IBinaryOperation operation
+                || operation.OperatorKind != BinaryOperatorKind.Add
+                || operation.Type?.SpecialType != SpecialType.System_String)
+            {
+                return;
+            }
 
-        var contents = new List<InterpolatedStringContentSyntax>(parts.Count);
-        foreach (var part in parts)
-        {
-            AddPart(part, contents, verbatim);
-        }
+            var parts = new List<IOperation>();
+            Flatten(operation, parts);
 
-        var startKind = verbatim
-            ? SyntaxKind.InterpolatedVerbatimStringStartToken
-            : SyntaxKind.InterpolatedStringStartToken;
+            var verbatim = ShouldUseVerbatim(parts);
+            if (AllAreStringLiterals(parts))
+            {
+                editor.ReplaceNode(node, BuildStringLiteral(parts, verbatim).WithTriviaFrom(node));
+                return;
+            }
 
-        var interpolated = SyntaxFactory.InterpolatedStringExpression(
-                SyntaxFactory.Token(startKind),
-                SyntaxFactory.List(contents),
-                SyntaxFactory.Token(SyntaxKind.InterpolatedStringEndToken)
-            )
-            .WithTriviaFrom(node);
+            var contents = new List<InterpolatedStringContentSyntax>(parts.Count);
+            foreach (var part in parts)
+            {
+                AddPart(part, contents, verbatim);
+            }
 
-        return document.WithSyntaxRoot(root.ReplaceNode(node, interpolated));
+            var startKind = verbatim
+                ? SyntaxKind.InterpolatedVerbatimStringStartToken
+                : SyntaxKind.InterpolatedStringStartToken;
+
+            editor.ReplaceNode(node, SyntaxFactory.InterpolatedStringExpression(
+                    SyntaxFactory.Token(startKind),
+                    SyntaxFactory.List(contents),
+                    SyntaxFactory.Token(SyntaxKind.InterpolatedStringEndToken)
+                )
+                .WithTriviaFrom(node));
+        });
     }
 
-    private static bool AllAreStringLiterals(List<ExpressionSyntax> parts)
+    private static bool AllAreStringLiterals(List<IOperation> parts)
     {
         foreach (var part in parts)
         {
-            if (part is not LiteralExpressionSyntax literal || !literal.IsKind(SyntaxKind.StringLiteralExpression))
+            if (GetPartExpression(part) is not LiteralExpressionSyntax literal || !literal.IsKind(SyntaxKind.StringLiteralExpression))
             {
                 return false;
             }
@@ -82,12 +79,12 @@ public sealed class StringConcatAnalyzerFix : CodeFixProvider
         return parts.Count > 0;
     }
 
-    private static LiteralExpressionSyntax BuildStringLiteral(List<ExpressionSyntax> parts, bool verbatim)
+    private static LiteralExpressionSyntax BuildStringLiteral(List<IOperation> parts, bool verbatim)
     {
         var builder = new System.Text.StringBuilder();
         foreach (var part in parts)
         {
-            builder.Append(((LiteralExpressionSyntax)part).Token.ValueText);
+            builder.Append(((LiteralExpressionSyntax)GetPartExpression(part)).Token.ValueText);
         }
 
         var value = builder.ToString();
@@ -101,26 +98,25 @@ public sealed class StringConcatAnalyzerFix : CodeFixProvider
         );
     }
 
-    private static void Flatten(ExpressionSyntax expression, List<ExpressionSyntax> parts, SemanticModel semanticModel, CancellationToken cancellationToken)
+    private static void Flatten(IOperation operation, List<IOperation> parts)
     {
-        var inner = Unparen(expression);
-        if (inner is BinaryExpressionSyntax { RawKind: (int)SyntaxKind.AddExpression } binary
-            && semanticModel.GetTypeInfo(binary, cancellationToken).Type?.SpecialType == SpecialType.System_String)
+        var inner = Unwrap(operation);
+        if (inner is IBinaryOperation { OperatorKind: BinaryOperatorKind.Add, Type.SpecialType: SpecialType.System_String } binary)
         {
-            Flatten(binary.Left, parts, semanticModel, cancellationToken);
-            Flatten(binary.Right, parts, semanticModel, cancellationToken);
+            Flatten(binary.LeftOperand, parts);
+            Flatten(binary.RightOperand, parts);
             return;
         }
 
         parts.Add(inner);
     }
 
-    private static bool ShouldUseVerbatim(List<ExpressionSyntax> parts)
+    private static bool ShouldUseVerbatim(List<IOperation> parts)
     {
         var anyVerbatim = false;
         foreach (var part in parts)
         {
-            if (part is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
+            if (GetPartExpression(part) is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
             {
                 var text = literal.Token.Text;
                 if (text.Length > 0 && text[0] == '@')
@@ -132,7 +128,7 @@ public sealed class StringConcatAnalyzerFix : CodeFixProvider
                     return false;
                 }
             }
-            else if (part is InterpolatedStringExpressionSyntax interpolated)
+            else if (GetPartExpression(part) is InterpolatedStringExpressionSyntax interpolated)
             {
                 if (interpolated.StringStartToken.IsKind(SyntaxKind.InterpolatedVerbatimStringStartToken))
                 {
@@ -159,8 +155,14 @@ public sealed class StringConcatAnalyzerFix : CodeFixProvider
         return value.IndexOfAny(['\0', '\a', '\b', '\f', '\v', '\r', '\n', '\t']) >= 0;
     }
 
-    private static void AddPart(ExpressionSyntax expression, List<InterpolatedStringContentSyntax> contents, bool verbatim)
+    private static void AddPart(IOperation operation, List<InterpolatedStringContentSyntax> contents, bool verbatim)
     {
+        var expression = GetInterpolationExpression(operation);
+        if (expression is null)
+        {
+            return;
+        }
+
         if (expression is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.StringLiteralExpression))
         {
             AppendText(literal.Token.ValueText, contents, verbatim);
@@ -244,6 +246,45 @@ public sealed class StringConcatAnalyzerFix : CodeFixProvider
 
     private static string EncodeVerbatim(string value)
         => value.Replace("\"", "\"\"").Replace("{", "{{").Replace("}", "}}");
+
+    private static ExpressionSyntax GetInterpolationExpression(IOperation operation)
+    {
+        var inner = Unwrap(operation);
+        if (inner is IInvocationOperation
+            {
+                TargetMethod: { Name: "ToString", IsStatic: false, Parameters.Length: 0, ReturnType.SpecialType: SpecialType.System_String },
+                Instance: { } instance,
+            })
+        {
+            return GetPartExpression(instance) ?? GetPartExpression(inner);
+        }
+
+        return GetPartExpression(inner);
+    }
+
+    private static ExpressionSyntax GetPartExpression(IOperation operation)
+    {
+        var syntax = Unwrap(operation).Syntax as ExpressionSyntax ?? Unwrap(operation).Syntax.FirstAncestorOrSelf<ExpressionSyntax>();
+        return syntax is null ? null : Unparen(syntax);
+    }
+
+    private static IOperation Unwrap(IOperation operation)
+    {
+        while (true)
+        {
+            switch (operation)
+            {
+                case IParenthesizedOperation parenthesized:
+                    operation = parenthesized.Operand;
+                    continue;
+                case IConversionOperation conversion when conversion.IsImplicit:
+                    operation = conversion.Operand;
+                    continue;
+                default:
+                    return operation;
+            }
+        }
+    }
 
     private static ExpressionSyntax Unparen(ExpressionSyntax expression)
     {

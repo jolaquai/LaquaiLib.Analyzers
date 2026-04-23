@@ -1,8 +1,16 @@
+using Microsoft.CodeAnalysis.Operations;
+
 namespace LaquaiLib.Analyzers.Refactorings__4XXX_;
 
+/// <summary>
+/// Reports string concatenations that can be rewritten as interpolated strings.
+/// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class StringConcatAnalyzer : DiagnosticAnalyzer
 {
+    /// <summary>
+    /// Describes diagnostic <c>LAQ4001</c>.
+    /// </summary>
     public static DiagnosticDescriptor Descriptor { get; } = new(
         id: "LAQ4001",
         title: "Do not use string concatenation",
@@ -13,29 +21,37 @@ public sealed class StringConcatAnalyzer : DiagnosticAnalyzer
         isEnabledByDefault: true
     );
 
+    /// <inheritdoc/>
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics { get; } = [Descriptor];
 
+    /// <inheritdoc/>
     public override void Initialize(AnalysisContext context)
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        context.RegisterSyntaxNodeAction(AnalyzeNode, SyntaxKind.AddExpression);
+        context.RegisterOperationAction(AnalyzeOperation, OperationKind.Binary);
     }
 
-    private static void AnalyzeNode(SyntaxNodeAnalysisContext context)
+    private static void AnalyzeOperation(OperationAnalysisContext context)
     {
-        var node = Unsafe.As<BinaryExpressionSyntax>(context.Node);
+        var operation = Unsafe.As<IBinaryOperation>(context.Operation);
 
-        if (node.Parent is BinaryExpressionSyntax { RawKind: (int)SyntaxKind.AddExpression })
+        if (operation.OperatorKind != BinaryOperatorKind.Add || operation.Type?.SpecialType != SpecialType.System_String)
         {
             return;
         }
 
-        if (context.SemanticModel.GetTypeInfo(node, context.CancellationToken).Type?.SpecialType != SpecialType.System_String)
+        var parent = operation.Parent;
+        while (parent is IParenthesizedOperation parenthesized)
+        {
+            parent = parenthesized.Parent;
+        }
+
+        if (parent is IBinaryOperation { OperatorKind: BinaryOperatorKind.Add, Type.SpecialType: SpecialType.System_String })
         {
             return;
         }
 
-        context.ReportDiagnostic(Diagnostic.Create(Descriptor, node.GetLocation()));
+        context.ReportDiagnostic(Diagnostic.Create(Descriptor, operation.Syntax.GetLocation()));
     }
 }
