@@ -1,0 +1,9 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <RootNamespace>LaquaiLib.Analyzers</RootNamespace>
+
+        <PackageDescription>Provides internal implementation details for LaquaiLib.Analyzers and LaquaiLib.Analyzers.Fixes. Not intended for direct consumption.</PackageDescription>
+    </PropertyGroup>
+
+</Project>

@@ -1,0 +1,23 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <RootNamespace>$(AssemblyName)</RootNamespace>
+
+        <PackageDescription>Provides fixers for LaquaiLib.Analyzers.</PackageDescription>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.Workspaces.Common" Version="5.0.0" PrivateAssets="all" />
+
+        <Using Include="System.Composition" />
+        <Using Include="Microsoft.CodeAnalysis.CodeActions" />
+        <Using Include="Microsoft.CodeAnalysis.CodeFixes" />
+        <Using Include="Microsoft.CodeAnalysis.Simplification" />
+        <Using Include="Microsoft.CodeAnalysis.Formatting" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Folder Include="Refactorings\" />
+    </ItemGroup>
+
+</Project>

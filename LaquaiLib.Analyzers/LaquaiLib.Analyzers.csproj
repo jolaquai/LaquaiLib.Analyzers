@@ -1,0 +1,18 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <RootNamespace>$(AssemblyName)</RootNamespace>
+
+        <PackageDescription>Provides general-purpose analyzers.</PackageDescription>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\LaquaiLib.Analyzers.Fixes\LaquaiLib.Analyzers.Fixes.csproj" />
+        <ProjectReference Include="..\LaquaiLib.Analyzers.Shared\LaquaiLib.Analyzers.Shared.csproj" />
+
+        <Folder Include="Refactorings %284XXX%29\" />
+        <Folder Include="Reliability %282XXX%29\" />
+    </ItemGroup>
+
+</Project>

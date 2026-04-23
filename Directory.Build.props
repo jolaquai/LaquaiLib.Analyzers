@@ -1,0 +1,60 @@
+<Project>
+
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <Nullable>disable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+
+        <CoreVersion>1.0.0</CoreVersion>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <NoWarn>$(NoWarn);CS8714;IDE0010;IDE0045;IDE0046;IDE0079;IDE0072;IDE0058;IDE0060;CA1034</NoWarn>
+        <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+        <AnalysisMode>recommended</AnalysisMode>
+        <AnalysisLevelPerformance>all</AnalysisLevelPerformance>
+
+        <LangVersion>latest</LangVersion>
+        <RollForward>LatestMajor</RollForward>
+        <DebugType>portable</DebugType>
+        <DebugSymbols>True</DebugSymbols>
+        <GeneratePackageOnBuild Condition="'$(Configuration)' == 'Release'">True</GeneratePackageOnBuild>
+        <GenerateDocumentationFile>True</GenerateDocumentationFile>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <IncludeSymbols>True</IncludeSymbols>
+        <Version>$(CoreVersion)</Version>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+        <PackageId>$(AssemblyName)</PackageId>
+        <PackageVersion>$(CoreVersion)</PackageVersion>
+        <PackageRequireLicenseAcceptance>False</PackageRequireLicenseAcceptance>
+        <PackageLicenseFile>LICENSE</PackageLicenseFile>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Authors>jolaquai</Authors>
+
+        <RepositoryType>git</RepositoryType>
+        <RepositoryUrl>https://github.com/jolaquai/LaquaiLib.Analyzers</RepositoryUrl>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="5.0.0" PrivateAssets="all" />
+
+        <None Include="$(OutputPath)$(AssemblyName).dll" Pack="True" PackagePath="analyzers/dotnet/cs" />
+
+        <Using Include="System.Collections.Immutable" />
+        <Using Include="System.ComponentModel" />
+        <Using Include="System.Runtime.CompilerServices" />
+        <Using Include="Microsoft.CodeAnalysis" />
+        <Using Include="Microsoft.CodeAnalysis.CSharp" />
+        <Using Include="Microsoft.CodeAnalysis.CSharp.Syntax" />
+        <Using Include="Microsoft.CodeAnalysis.Diagnostics" />
+        <Using Include="Microsoft.CodeAnalysis.Text" />
+        <Using Include="System.Diagnostics" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <None Remove="bin/**;obj/**" />
+    </ItemGroup>
+
+</Project>

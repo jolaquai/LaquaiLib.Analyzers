@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/Solution Items/">
+    <File Path=".gitattributes" />
+    <File Path=".gitignore" />
+    <File Path="Directory.Build.props" />
+    <File Path="LICENSE" />
+    <File Path="push-nuget.ps1" />
+    <File Path="README.md" />
+  </Folder>
+  <Project Path="LaquaiLib.Analyzers.Fixes/LaquaiLib.Analyzers.Fixes.csproj" />
+  <Project Path="LaquaiLib.Analyzers.Shared/LaquaiLib.Analyzers.Shared.csproj" />
+  <Project Path="LaquaiLib.Analyzers/LaquaiLib.Analyzers.csproj" />
+</Solution>
