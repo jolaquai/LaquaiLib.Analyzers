@@ -6,7 +6,7 @@
         <Nullable>disable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
 
-        <CoreVersion>1.0.0</CoreVersion>
+        <CoreVersion>0.1.0</CoreVersion>
     </PropertyGroup>
 
     <PropertyGroup>
@@ -51,10 +51,10 @@
         <Using Include="Microsoft.CodeAnalysis.Diagnostics" />
         <Using Include="Microsoft.CodeAnalysis.Text" />
         <Using Include="System.Diagnostics" />
-    </ItemGroup>
 
-    <ItemGroup>
-      <None Remove="bin/**;obj/**" />
+        <None Remove="bin/**;obj/**" />
+
+        <None Include="..\LICENSE;README.md" Pack="True" PackagePath="/" />
     </ItemGroup>
 
 </Project>
